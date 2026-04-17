@@ -6,6 +6,7 @@ import { Icon } from "../components/Icons";
 
 export function LandingPage() {
   const [activeFaq, setActiveFaq] = useState(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const nav = useNavigate();
 
   const onGetStarted = () => {
@@ -38,18 +39,46 @@ export function LandingPage() {
 
   return (
     <div>
-      <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 100, background: "rgba(10,22,40,0.95)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "0 80px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 64 }}>
+      <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 100, background: "rgba(10,22,40,0.95)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "0 clamp(16px, 5vw, 80px)", display: "flex", alignItems: "center", justifyContent: "space-between", height: 64 }}>
+        {/* Logo */}
         <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, color: "white", display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ width: 28, height: 28, background: COLORS.emerald, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <span style={{ width: 14, height: 14, color: COLORS.navy }}><Icon.Heart /></span>
           </span>
           HealthClub
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+
+        {/* Desktop links */}
+        <div className="nav-desktop-links" style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Link to="/login" className="btn btn-ghost btn-sm" style={{ color: "rgba(255,255,255,0.7)" }}>Login</Link>
-          <Link to="/onboarding" className="btn btn-primary btn-sm">Get Started →</Link >
+          <Link to="/onboarding" className="btn btn-primary btn-sm">Get Started →</Link>
         </div>
+
+        {/* Hamburger — mobile only */}
+        <button
+          className="nav-hamburger"
+          onClick={() => setMobileMenuOpen(o => !o)}
+          aria-label="Toggle menu"
+          style={{ display: "none", background: "none", border: "none", cursor: "pointer", padding: 8, color: "white" }}
+        >
+          {mobileMenuOpen ? (
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          ) : (
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          )}
+        </button>
       </nav>
+
+      {/* Mobile drawer */}
+      {mobileMenuOpen && (
+        <div
+          style={{ position: "fixed", top: 64, left: 0, right: 0, zIndex: 99, background: "rgba(10,22,40,0.98)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(255,255,255,0.08)", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 12, animation: "fadeUp 0.2s ease" }}
+          className="nav-mobile-drawer"
+        >
+          <Link to="/login" onClick={() => setMobileMenuOpen(false)} className="btn btn-ghost" style={{ color: "rgba(255,255,255,0.85)", justifyContent: "center", width: "100%" }}>Login</Link>
+          <Link to="/onboarding" onClick={() => setMobileMenuOpen(false)} className="btn btn-primary" style={{ justifyContent: "center", width: "100%" }}>Get Started →</Link>
+        </div>
+      )}
 
       {/* Hero */}
       <section className="hero-section" style={{ paddingTop: 64 }}>

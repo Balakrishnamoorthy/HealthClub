@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { COLORS, AREAS, PLANS } from "../utils/constants";
 import { Icon } from "../components/Icons";
 import { useToast, Modal, Avatar, Gauge, MiniChart, BarChart, QRCode } from "../components/UI";
 
-const API_BASE = "https://ka4hjb23ie.execute-api.ap-south-1.amazonaws.com/dev";
+const API_BASE = import.meta.env.VITE_API_BASE;
 
 export function UserDashboard({ user, onLogout }) {
   const [section, setSection] = useState("overview");
@@ -11,15 +11,26 @@ export function UserDashboard({ user, onLogout }) {
   const [feedback, setFeedback] = useState({ rating: 5, comment: "" });
   const [rescheduleModal, setRescheduleModal] = useState(false);
   const { show, node: toastNode } = useToast();
-  
+
   const [reports, setReports] = useState([]);
   const [loadingReports, setLoadingReports] = useState(true);
 
   const plan = user?.planObj || PLANS.find(p => p.id === user?.plan) || PLANS[1];
+  // console.log(user)
+
+  const duration = (user?.duration).toUpperCase() || "3M";
+
+  const durationMap = {
+    "3M": "3 MONTHS",
+    "6M": "6 MONTHS",
+    "1Y": "1 YEAR",
+  };
+
+  const durationLabel = durationMap[duration] || duration;
 
   useEffect(() => {
     if (!user?.phone) return;
-    
+
     fetch(`${API_BASE}/records/${encodeURIComponent(user.phone)}`)
       .then(res => res.json())
       .then(data => {
@@ -41,13 +52,34 @@ export function UserDashboard({ user, onLogout }) {
   const glucoseData = reports.map(r => parseInt(r.glucose) || 0);
   const pressureData = reports.map(r => parseInt(r.systolic) || 0);
 
-  // Calendar state (Mock Schedule)
+  // Calendar state
   const today = new Date();
   const [calMonth, setCalMonth] = useState(today.getMonth());
   const [calYear, setCalYear] = useState(today.getFullYear());
-  const scheduledDays = [6, 13, 20, 27];
   const getDaysInMonth = (m, y) => new Date(y, m + 1, 0).getDate();
   const getFirstDay = (m, y) => new Date(y, m, 1).getDay();
+
+  // Real schedule from backend
+  const [scheduleData, setScheduleData] = useState(null);
+  useEffect(() => {
+    if (!user?.id) return;
+    fetch(`${API_BASE}/user-schedule/${user.id}`)
+      .then(res => res.json())
+      .then(data => setScheduleData(data))
+      .catch(err => console.error("Failed to load schedule:", err));
+  }, [user]);
+
+  // Derive set of 'YYYY-MM-DD' strings for the current calendar month
+  const scheduledDates = new Set(scheduleData?.schedule || []);
+  const scheduledDaysInMonth = Array.from(scheduledDates)
+    .filter(d => {
+      const dt = new Date(d + "T00:00:00");
+      return dt.getFullYear() === calYear && dt.getMonth() === calMonth;
+    })
+    .map(d => new Date(d + "T00:00:00").getDate());
+
+  const nextVisit = scheduleData?.nextVisit || null;
+  const upcomingVisits = scheduleData?.upcomingVisits?.slice(0, 5) || [];
 
   const navItems = [
     { id: "overview", label: "Overview", icon: <Icon.Home /> },
@@ -57,26 +89,45 @@ export function UserDashboard({ user, onLogout }) {
     { id: "profile", label: "Profile", icon: <Icon.Settings /> },
   ];
 
+  // Collapsible sidebar state (tablet only)
+  const sidebarRef = useRef(null);
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (sidebarRef.current && !sidebarRef.current.contains(e.target)) {
+        setSidebarExpanded(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
   return (
     <div className="dashboard">
       {toastNode}
       {/* SIDEBAR */}
-      <aside className="sidebar">
+      <aside
+        ref={sidebarRef}
+        className={`sidebar${sidebarExpanded ? " sidebar-expanded" : ""}`}
+        onMouseEnter={() => setSidebarExpanded(true)}
+        onMouseLeave={() => setSidebarExpanded(false)}
+      >
         <div className="sidebar-logo">
           <span style={{ width: 32, height: 32, background: COLORS.emerald, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: COLORS.navy, flexShrink: 0 }}>
             <Icon.Heart />
           </span>
-          HealthClub
+          <span className="sidebar-logo-text">HealthClub</span>
         </div>
         <div className="sidebar-section">Main Menu</div>
         {navItems.map(item => (
           <div key={item.id} className={`nav-item ${section === item.id ? "active" : ""}`}
-            onClick={() => setSection(item.id)}>
-            {item.icon}{item.label}
+            onClick={() => { setSection(item.id); setSidebarExpanded(false); }}>
+            {item.icon}<span className="nav-label">{item.label}</span>
           </div>
         ))}
-        <div className="sidebar-section" style={{ marginTop: "auto" }}>Account</div>
-        <div className="nav-item" onClick={onLogout}><Icon.Logout /> Log out</div>
+        <div className="sidebar-section" style={{ marginTop: "auto" }}><span className="nav-label">Account</span></div>
+        <div className="nav-item" onClick={() => { setSidebarExpanded(false); onLogout(); }}><Icon.Logout /><span className="nav-label">Log out</span></div>
       </aside>
 
       {/* MAIN */}
@@ -98,19 +149,19 @@ export function UserDashboard({ user, onLogout }) {
             </div>
             <div className="page-body">
               {loadingReports ? (
-                 <div style={{ textAlign: "center", padding: 40, color: COLORS.slate }}>
-                    <span className="spinner" style={{ borderColor: COLORS.emerald, borderTopColor: "transparent" }}></span>
-                    <br/><br/>Loading health data...
-                 </div>
+                <div style={{ textAlign: "center", padding: 40, color: COLORS.slate, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                  <span className="spinner" style={{ borderColor: COLORS.emerald, borderTopColor: "transparent" }}></span>
+                  <br /><br />Loading health data...
+                </div>
               ) : !latestReport ? (
-                 <div className="card" style={{ padding: 40, textAlign: "center", background: COLORS.offWhite }}>
-                    <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 24, color: COLORS.navy, marginBottom: 12 }}>No Health Records Found</h3>
-                    <p style={{ color: COLORS.slate }}>Your HSA hasn't uploaded any readings for you yet. They will appear here once submitted.</p>
-                 </div>
+                <div className="card" style={{ padding: 40, textAlign: "center", background: COLORS.offWhite }}>
+                  <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 24, color: COLORS.navy, marginBottom: 12 }}>No Health Records Found</h3>
+                  <p style={{ color: COLORS.slate }}>Your HSA hasn't uploaded any readings for you yet. They will appear here once submitted.</p>
+                </div>
               ) : (
                 <>
                   {/* Gauges */}
-                  <div className="card" style={{ padding: "28px 32px", marginBottom: 24, background: `linear-gradient(135deg, ${COLORS.navy} 0%, ${COLORS.navyLight} 100%)` }}>
+                  <div className="card overviewCard" style={{ padding: "28px 32px", marginBottom: 24, background: `linear-gradient(135deg, ${COLORS.navy} 0%, ${COLORS.navyLight} 100%)` }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>Latest Reading</div>
@@ -122,7 +173,7 @@ export function UserDashboard({ user, onLogout }) {
                         {latestReport.status === 'attention' ? 'Needs Attention' : 'All Normal'}
                       </span>
                     </div>
-                    <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
+                    <div className="gauge-grid">
                       <Gauge value={latestReport.glucose} max={200} label="Glucose" color={COLORS.glucose} />
                       <Gauge value={latestReport.systolic} max={200} label="Systolic" color={COLORS.pressure} />
                       <Gauge value={latestReport.diastolic} max={120} label="Diastolic" color="#A855F7" />
@@ -153,22 +204,33 @@ export function UserDashboard({ user, onLogout }) {
                           <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.slate, textTransform: "uppercase", letterSpacing: "0.07em" }}>Cholesterol</div>
                         </div>
                         <div style={{ fontSize: 28, fontFamily: "'DM Serif Display', serif", color: COLORS.cholesterol, marginBottom: 8 }}>{latestReport.cholesterol} <span style={{ fontSize: 13, color: COLORS.slate, fontFamily: "Sora" }}>mg/dL</span></div>
-                        <MiniChart data={reports.map(r => parseInt(r.cholesterol)||0)} color={COLORS.cholesterol} />
+                        <MiniChart data={reports.map(r => parseInt(r.cholesterol) || 0)} color={COLORS.cholesterol} />
                       </div>
                     )}
                   </div>
                 </>
               )}
               {/* Upcoming + Subscription */}
-              <div className="grid-2" style={{ gap: 20 }}>
+              <div className="grid-2" style={{ gap: 20, marginTop: 20 }}>
                 <div className="card" style={{ padding: 24 }}>
                   <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: COLORS.navy, marginBottom: 16 }}>Next Visit</h3>
                   <div style={{ background: COLORS.emeraldLight, border: `1px solid ${COLORS.emerald}22`, borderRadius: 12, padding: 20 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
                       <div style={{ width: 44, height: 44, background: COLORS.emerald, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", color: COLORS.navy, fontSize: 20 }}>📅</div>
                       <div>
-                        <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.navy }}>Pending Schedule Conf.</div>
-                        <div style={{ fontSize: 13, color: COLORS.slate }}>Your HSA will contact you soon</div>
+                        {nextVisit ? (
+                          <>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.navy }}>
+                              {new Date(nextVisit + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+                            </div>
+                            <div style={{ fontSize: 13, color: COLORS.slate }}>HSA Home Visit · {user?.area || ""}</div>
+                          </>
+                        ) : (
+                          <>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.navy }}>No upcoming visits</div>
+                            <div style={{ fontSize: 13, color: COLORS.slate }}>Your subscription may have ended</div>
+                          </>
+                        )}
                       </div>
                     </div>
                     <div style={{ fontSize: 13, color: COLORS.slate, marginBottom: 16 }}>Location: <strong style={{ color: COLORS.navy }}>{user?.area || "N/A"}</strong></div>
@@ -180,6 +242,7 @@ export function UserDashboard({ user, onLogout }) {
                 <div className="card" style={{ padding: 24 }}>
                   <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: COLORS.navy, marginBottom: 16 }}>Subscription</h3>
                   <div className="stat-row" style={{ borderBottom: "1px solid rgba(0,0,0,0.05)", padding: "8px 0", display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: 14, color: COLORS.slate }}>Plan</span><span className="badge badge-success">{plan.name}</span></div>
+                  <div className="stat-row" style={{ borderBottom: "1px solid rgba(0,0,0,0.05)", padding: "8px 0", display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: 14, color: COLORS.slate }}>Duration</span><span className="badge badge-success">{durationLabel}</span></div>
                   <button className="btn btn-outline btn-sm mt-16">Upgrade Plan →</button>
                 </div>
               </div>
@@ -197,15 +260,58 @@ export function UserDashboard({ user, onLogout }) {
             <div className="page-body">
               {reports.length > 0 ? (
                 <>
-                  <div className="card" style={{ padding: 28, marginBottom: 24 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-                      <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: COLORS.navy }}>Blood Glucose Trend</h3>
+                  {/* Plan-aware metric charts */}
+                  {plan.metrics?.includes("blood_glucose") && (
+                    <div className="card" style={{ padding: 28, marginBottom: 24 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                        <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: COLORS.navy }}>Blood Glucose Trend</h3>
+                        <span className="badge badge-neutral" style={{ background: COLORS.glucose + "22", color: COLORS.glucose }}>mg/dL</span>
+                      </div>
+                      <p style={{ fontSize: 12, color: COLORS.slate, marginBottom: 20 }}>Normal range: 70 – 140 mg/dL</p>
+                      <BarChart
+                        data={reports.map((r, i) => ({ label: `Visit${i + 1}`, value: parseInt(r.glucose) || 0 }))}
+                        colors={[COLORS.glucose, COLORS.glucose + "99"]}
+                      />
                     </div>
-                    <BarChart
-                      data={reports.map((r, i) => ({ label: `Visit ${i+1}`, value: parseInt(r.glucose) || 0 }))}
-                      colors={[COLORS.glucose, COLORS.glucose + "99"]}
-                    />
-                  </div>
+                  )}
+                  {plan.metrics?.includes("blood_pressure") && (
+                    <div className="card" style={{ padding: 28, marginBottom: 24 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                        <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: COLORS.navy }}>Blood Pressure Trend</h3>
+                        <span className="badge badge-neutral" style={{ background: COLORS.pressure + "22", color: COLORS.pressure }}>mmHg</span>
+                      </div>
+                      <p style={{ fontSize: 12, color: COLORS.slate, marginBottom: 20 }}>Systolic · Normal range: &lt;120 mmHg &nbsp;|&nbsp; Diastolic · Normal range: &lt;80 mmHg</p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.slate, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Systolic</div>
+                          <BarChart
+                            data={reports.map((r, i) => ({ label: `V${i + 1}`, value: parseInt(r.systolic) || 0 }))}
+                            colors={[COLORS.pressure, COLORS.pressure + "99"]}
+                          />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.slate, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Diastolic</div>
+                          <BarChart
+                            data={reports.map((r, i) => ({ label: `V${i + 1}`, value: parseInt(r.diastolic) || 0 }))}
+                            colors={["#A855F7", "#A855F799"]}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {plan.metrics?.includes("cholesterol") && (
+                    <div className="card" style={{ padding: 28, marginBottom: 24 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                        <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: COLORS.navy }}>Cholesterol Trend</h3>
+                        <span className="badge badge-neutral" style={{ background: COLORS.cholesterol + "44", color: "#b07e00" }}>mg/dL</span>
+                      </div>
+                      <p style={{ fontSize: 12, color: COLORS.slate, marginBottom: 20 }}>Normal total cholesterol: &lt;200 mg/dL</p>
+                      <BarChart
+                        data={reports.map((r, i) => ({ label: `Visit${i + 1}`, value: parseInt(r.cholesterol) || 0 }))}
+                        colors={[COLORS.cholesterol, COLORS.cholesterol + "99"]}
+                      />
+                    </div>
+                  )}
                   <div className="card" style={{ overflow: "hidden" }}>
                     <div style={{ padding: "20px 24px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
                       <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: COLORS.navy }}>All Reports</h3>
@@ -235,9 +341,9 @@ export function UserDashboard({ user, onLogout }) {
                   </div>
                 </>
               ) : (
-                 <div className="card" style={{ padding: 40, textAlign: "center", background: COLORS.offWhite }}>
-                    <p style={{ color: COLORS.slate }}>No reports available yet.</p>
-                 </div>
+                <div className="card" style={{ padding: 40, textAlign: "center", background: COLORS.offWhite }}>
+                  <p style={{ color: COLORS.slate }}>No reports available yet.</p>
+                </div>
               )}
             </div>
           </>
@@ -271,15 +377,17 @@ export function UserDashboard({ user, onLogout }) {
                     {Array.from({ length: getDaysInMonth(calMonth, calYear) }, (_, i) => {
                       const day = i + 1;
                       const isToday = day === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear();
-                      const isScheduled = scheduledDays.includes(day);
+                      const isScheduled = scheduledDaysInMonth.includes(day);
                       return (
-                        <div key={day} className={`cal-day ${isScheduled ? "scheduled" : ""} ${isToday ? "today" : ""}`} style={{ 
-                          padding: 10, 
-                          textAlign: "center", 
-                          borderRadius: 8, 
+                        <div key={day} className={`cal-day ${isScheduled ? "scheduled" : ""} ${isToday ? "today" : ""}`} style={{
+                          padding: 10,
+                          textAlign: "center",
+                          borderRadius: 8,
                           border: isToday ? `2px solid ${COLORS.emerald}` : "none",
                           background: isScheduled ? COLORS.emerald : "transparent",
-                          color: isScheduled ? COLORS.navy : COLORS.navy
+                          color: isScheduled ? COLORS.navy : COLORS.navy,
+                          fontWeight: isScheduled ? 700 : 400,
+                          cursor: isScheduled ? "pointer" : "default"
                         }}>
                           {day}
                         </div>
@@ -290,7 +398,24 @@ export function UserDashboard({ user, onLogout }) {
                 <div>
                   <div className="card" style={{ padding: 24, marginBottom: 16 }}>
                     <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 18, color: COLORS.navy, marginBottom: 16 }}>Upcoming Visits</h3>
-                    <p style={{ fontSize: 14, color: COLORS.slate }}>No visits dynamically synchronized yet. Feature coming soon!</p>
+                    {upcomingVisits.length > 0 ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {upcomingVisits.map((dateStr, idx) => (
+                          <div key={idx} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: idx < upcomingVisits.length - 1 ? "1px solid #eee" : "none" }}>
+                            <div style={{ width: 34, height: 34, borderRadius: 8, background: COLORS.emeraldLight, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: COLORS.emerald }}>{idx + 1}</div>
+                            <div>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: COLORS.navy }}>
+                                {new Date(dateStr + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+                              </div>
+                              <div style={{ fontSize: 12, color: COLORS.slate }}>HSA Home Visit · {user?.area}</div>
+                            </div>
+                            <span className="badge badge-info" style={{ marginLeft: "auto" }}>Scheduled</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p style={{ fontSize: 14, color: COLORS.slate }}>No upcoming visits scheduled.</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -306,7 +431,7 @@ export function UserDashboard({ user, onLogout }) {
             </div>
             <div className="page-body">
               <div className="card" style={{ padding: 8 }}>
-                 <p style={{ padding: 20, color: COLORS.slate }}>You have no new notifications.</p>
+                <p style={{ padding: 20, color: COLORS.slate }}>You have no new notifications.</p>
               </div>
             </div>
           </>
@@ -353,6 +478,21 @@ export function UserDashboard({ user, onLogout }) {
           </>
         )}
       </main>
+
+      {/* MOBILE BOTTOM NAV */}
+      <nav className="mobile-nav">
+        {navItems.map(item => (
+          <div key={item.id} className={`mobile-nav-item ${section === item.id ? "active" : ""}`}
+            onClick={() => setSection(item.id)}>
+            {item.icon}
+            <span>{item.label}</span>
+          </div>
+        ))}
+        <div className="mobile-nav-item" onClick={onLogout}>
+          <Icon.Logout />
+          <span>Logout</span>
+        </div>
+      </nav>
     </div>
   );
 }

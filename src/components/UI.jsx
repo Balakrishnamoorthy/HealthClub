@@ -1,12 +1,18 @@
 import { useState, useEffect } from "react";
 import { COLORS } from "../utils/constants";
+import { X, Check, Info } from "lucide-react";
 import { Icon } from "./Icons";
+import {
+  RadialBarChart, RadialBar, ResponsiveContainer,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
+  BarChart as RechartBar, Bar, Cell, Legend
+} from "recharts";
 
 export function Toast({ msg, type, onClose }) {
   useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]);
   return (
     <div className={`toast toast-${type}`}>
-      <span style={{ fontSize: 18 }}>{type === "success" ? "✓" : type === "error" ? "✗" : "ℹ"}</span>
+      <span style={{ fontSize: 18 }}>{type === "success" ? <Check size={16} /> : type === "error" ? <X size={16} /> : <Info size={16} />}</span>
       {msg}
     </div>
   );
@@ -46,21 +52,19 @@ export function Avatar({ name, size = "md", color }) {
 }
 
 export function Gauge({ value, max, label, color }) {
-  const pct = Math.min(value / max, 1);
-  const r = 42, cx = 52, cy = 52;
-  const circumference = 2 * Math.PI * r;
-  const dash = pct * circumference * 0.75;
+  const pct = Math.round(Math.min((value / max) * 100, 100));
+  const data = [{ name: label, value: pct, fill: color }];
   return (
-    <div className="gauge-wrap" style={{ width: 104, height: 104 }}>
-      <svg width="104" height="104" viewBox="0 0 104 104" className="gauge-svg">
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(0,0,0,0.06)" strokeWidth="8" strokeLinecap="round"
-          strokeDasharray={`${circumference * 0.75} ${circumference}`} strokeDashoffset={0} />
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="8" strokeLinecap="round"
-          strokeDasharray={`${dash} ${circumference}`} strokeDashoffset={0} style={{ transition: "stroke-dasharray 0.8s ease" }} />
-      </svg>
-      <div className="gauge-text">
-        <div style={{ fontSize: 20, fontWeight: 700, color: COLORS.navy, fontFamily: "'DM Serif Display', serif" }}>{value}</div>
-        <div style={{ fontSize: 10, color: COLORS.slate, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
+    <div style={{ width: 120, height: 120, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "relative" }}>
+      <ResponsiveContainer width={140} height={140}>
+        <RadialBarChart cx="50%" cy="50%" innerRadius="62%" outerRadius="85%"
+          startAngle={210} endAngle={-30} data={data} barSize={10}>
+          <RadialBar background={{ fill: "rgba(0,0,0,0.06)" }} dataKey="value" cornerRadius={6} />
+        </RadialBarChart>
+      </ResponsiveContainer>
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+        <div style={{ fontSize: 19, fontWeight: 800, color: color, fontFamily: "'DM Serif Display', serif", lineHeight: 1 }}>{value}</div>
+        <div style={{ fontSize: 9, color: COLORS.slate, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 3 }}>{label}</div>
       </div>
     </div>
   );
@@ -68,29 +72,43 @@ export function Gauge({ value, max, label, color }) {
 
 export function MiniChart({ data, color, height = 56 }) {
   if (!data || data.length < 2) return null;
-  const min = Math.min(...data), max = Math.max(...data);
-  const range = max - min || 1;
-  const w = 160, h = height;
-  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * (h - 8) - 4}`).join(" ");
+  const chartData = data.map((v, i) => ({ i, v }));
+  const gradId = `mg${color.replace('#', '')}${height}`;
   return (
-    <svg width="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    <ResponsiveContainer width="100%" height={height}>
+      <AreaChart data={chartData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor={color} stopOpacity={0.25} />
+            <stop offset="95%" stopColor={color} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <Area type="monotone" dataKey="v" stroke={color} strokeWidth={2}
+          fill={`url(#${gradId})`} dot={false} isAnimationActive />
+      </AreaChart>
+    </ResponsiveContainer>
   );
 }
 
 export function BarChart({ data, colors }) {
-  const max = Math.max(...data.map(d => d.value));
+  const color = colors?.[0] || COLORS.emerald;
   return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 140 }}>
-      {data.map((d, i) => (
-        <div key={i} className="chart-bar">
-          <div style={{ fontSize: 11, color: COLORS.slate, marginBottom: 4 }}>{d.value}</div>
-          <div className="chart-bar-fill" style={{ height: `${(d.value / max) * 100}%`, background: colors[i % colors.length] }} />
-          <div className="chart-bar-label">{d.label}</div>
-        </div>
-      ))}
-    </div>
+    <ResponsiveContainer width="100%" height={180}>
+      <RechartBar data={data} barSize={28} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" vertical={false} />
+        <XAxis dataKey="label" tick={{ fontSize: 11, fill: COLORS.slate }} axisLine={false} tickLine={false} />
+        <YAxis tick={{ fontSize: 11, fill: COLORS.slate }} axisLine={false} tickLine={false} />
+        <Tooltip
+          contentStyle={{ background: COLORS.white, border: "1px solid #eee", borderRadius: 10, fontSize: 12, boxShadow: "0 4px 20px rgba(0,0,0,0.10)" }}
+          cursor={{ fill: "rgba(0,0,0,0.04)" }}
+        />
+        <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+          {data.map((_, i) => (
+            <Cell key={i} fill={colors[i % colors.length] || color} />
+          ))}
+        </Bar>
+      </RechartBar>
+    </ResponsiveContainer>
   );
 }
 
@@ -113,16 +131,17 @@ export function Steps({ current, steps }) {
 }
 
 export function QRCode({ userId }) {
-  const seed = userId.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-  const cells = Array.from({ length: 100 }, (_, i) => ((seed * (i + 7) * 13 + i * 31) % 5) < 2);
-  [0,1,2,7,8,9,10,11,12,13,14,21,63,70,77,84,85,86,87,88,89,90,91,92,98,99].forEach(i => cells[i] = true);
+  // Dynamically import qrcode.react to avoid SSR issues
+  const [QR, setQR] = useState(null);
+  useEffect(() => {
+    import("qrcode.react").then(mod => setQR(() => mod.QRCodeSVG));
+  }, []);
+
+  const qrData = JSON.stringify({ type: "healthclub-user", id: userId });
+  if (!QR) return <div style={{ width: 160, height: 160, background: "#f0f0f0", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#999", fontSize: 12 }}>Loading QR...</div>;
   return (
-    <div className="qr-wrapper">
-      <div className="qr-inner">
-        {cells.map((filled, i) => (
-          <div key={i} className="qr-cell" style={{ background: filled ? COLORS.navy : "white", borderRadius: 1 }} />
-        ))}
-      </div>
+    <div style={{ display: "inline-block", padding: 12, background: "white", borderRadius: 10, boxShadow: "0 2px 12px rgba(0,0,0,0.08)" }}>
+      <QR value={qrData} size={150} level="M" includeMargin={false} />
     </div>
   );
 }

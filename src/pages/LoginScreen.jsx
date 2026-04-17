@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { COLORS, PLANS } from "../utils/constants";
+import { COLORS } from "../utils/constants";
 import { Icon } from "../components/Icons";
 import { useToast } from "../components/UI";
+import { useUser } from "../context/UserContext";
 
-export function LoginScreen({ onLogin, onBack }) {
+export function LoginScreen({ onBack }) {
   const [role, setRole] = useState("user");
   const [phone, setPhone] = useState("");
   const [pin, setPin] = useState("");
@@ -11,11 +12,12 @@ export function LoginScreen({ onLogin, onBack }) {
   const [loading, setLoading] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const { show, node: toastNode } = useToast();
+  const { login } = useUser();
 
   const handleSendOTP = async () => {
     if (!phone) { show("Enter your phone number", "error"); return; }
     setLoading(true);
-    
+
     try {
       const res = await fetch("https://ka4hjb23ie.execute-api.ap-south-1.amazonaws.com/dev/send-otp", {
         method: "POST",
@@ -24,7 +26,7 @@ export function LoginScreen({ onLogin, onBack }) {
       });
       const data = await res.json();
       setLoading(false);
-      
+
       if (res.ok) {
         console.log("✅ OTP Received from Lambda:", data.otp);
         setOtpSent(true);
@@ -45,13 +47,13 @@ export function LoginScreen({ onLogin, onBack }) {
         return;
       }
       setLoading(true);
-      setTimeout(() => { setLoading(false); onLogin("admin", {}); }, 1000);
+      setTimeout(() => { setLoading(false); login("admin", {}); }, 1000);
       return;
     }
 
     if (otpSent && !otp) { show("Please enter the OTP", "error"); return; }
     setLoading(true);
-    
+
     try {
       const res = await fetch("https://ka4hjb23ie.execute-api.ap-south-1.amazonaws.com/dev/login", {
         method: "POST",
@@ -60,9 +62,9 @@ export function LoginScreen({ onLogin, onBack }) {
       });
       const data = await res.json();
       setLoading(false);
-      
+
       if (res.ok) {
-        onLogin(role, data.user);
+        login(role, data.user);
       } else {
         show(data.error || "Login failed", "error");
       }
@@ -99,7 +101,7 @@ export function LoginScreen({ onLogin, onBack }) {
                 <label className="label">Phone Number</label>
                 <input className="input" placeholder="+91 98765 43210" value={phone} disabled={otpSent} onChange={e => setPhone(e.target.value)} />
               </div>
-              
+
               {otpSent && (
                 <div className="field">
                   <label className="label">Received OTP</label>

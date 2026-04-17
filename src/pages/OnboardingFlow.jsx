@@ -1,9 +1,15 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { COLORS, PLANS, DURATIONS, INTERVALS, AREAS } from "../utils/constants";
 import { Icon } from "../components/Icons";
 import { useToast, Steps } from "../components/UI";
 
-export function OnboardingFlow({ onComplete, onBack }) {
+import { useUser } from "../context/UserContext";
+
+export function OnboardingFlow() {
+
+  const nav = useNavigate();
+  const { login } = useUser();
   const [step, setStep] = useState(0);
   const [selected, setSelected] = useState({ plan: null, duration: null, interval: null });
   const [details, setDetails] = useState({ name: "", phone: "", email: "", area: "" });
@@ -20,20 +26,38 @@ export function OnboardingFlow({ onComplete, onBack }) {
     ? Math.round(planObj.price * durationObj.months * (1 - durationObj.discount / 100))
     : 0;
 
-  const validateDetails = () => {
+  const validateDetails = async () => {
     const e = {};
-    if (!details.name.trim()) e.name = "Name is required";
-    if (!/^\+?[\d\s]{10,}$/.test(details.phone)) e.phone = "Valid phone required";
-    if (!/\S+@\S+\.\S+/.test(details.email)) e.email = "Valid email required";
-    if (!details.area) e.area = "Please select your area";
+    if (details.name.trim().length < 3) e.name = "Name must be at least 3 characters";
+    if (!/^\+?[0-9]{10}$/.test(details.phone.trim())) e.phone = "Phone number must be at least 10 digits";
+    if (!/\S+@\S+\.\S+/.test(details.email.trim())) e.email = "Valid email required";
+    if (!details.area.trim()) e.area = "Area is required";
     setErrors(e);
-    return Object.keys(e).length === 0;
+    if (Object.keys(e).length > 0) return false;
+
+    // Check phone uniqueness before proceeding to payment
+    try {
+      const res = await fetch("https://ka4hjb23ie.execute-api.ap-south-1.amazonaws.com/dev/check-phone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: details.phone.trim() })
+      });
+      if (res.status === 409) {
+        setErrors(prev => ({ ...prev, phone: "This phone number is already registered. Please login instead." }));
+        show("Phone number already registered. Please login instead.", "error");
+        return false;
+      }
+    } catch {
+      show("Could not verify phone number. Please try again.", "error");
+      return false;
+    }
+    return true;
   };
 
   const handleNext = async () => {
     if (step === 0 && (!selected.plan || !selected.duration)) { show("Please select a plan and duration", "error"); return; }
     if (step === 1 && !selected.interval) { show("Please select an interval", "error"); return; }
-    if (step === 2 && !validateDetails()) return;
+    if (step === 2 && !(await validateDetails())) return;
     if (step === 3) { show("Payment processed successfully!", "success"); setTimeout(() => setStep(s => s + 1), 800); return; }
     if (step === 4) {
       if (!startDate) { show("Please select a start date", "error"); return; }
@@ -50,6 +74,10 @@ export function OnboardingFlow({ onComplete, onBack }) {
         if (res.ok) {
           show("Account created successfully!", "success");
           setTimeout(() => onComplete(data.user), 1500);
+        } else if (res.status === 409) {
+          show(data.error || "Phone number already registered.", "error");
+          setStep(2);
+          setErrors(prev => ({ ...prev, phone: "This phone number is already registered. Please login instead." }));
         } else {
           show(data.error || "Failed to create account", "error");
         }
@@ -60,6 +88,15 @@ export function OnboardingFlow({ onComplete, onBack }) {
     }
     setStep(s => s + 1);
   };
+
+  const onComplete = (user) => {
+    login(user.role, user);
+    nav("/user");
+  }
+
+  const onBack = () => {
+    nav("/");
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: COLORS.offWhite }}>
@@ -160,25 +197,25 @@ export function OnboardingFlow({ onComplete, onBack }) {
               <div className="field">
                 <label className="label">Full Name</label>
                 <input className="input" placeholder="Priya Sharma" value={details.name}
-                  onChange={e => { setDetails(d => ({ ...d, name: e.target.value })); setErrors(er => ({ ...er, name: "" })); }} />
+                  onChange={e => { setDetails({ ...details, name: e.target.value }); setErrors({ ...errors, name: "" }); }} />
                 {errors.name && <div className="field-error">{errors.name}</div>}
               </div>
               <div className="field">
                 <label className="label">Phone Number (Login ID)</label>
                 <input className="input" placeholder="+91 98765 43210" value={details.phone}
-                  onChange={e => { setDetails(d => ({ ...d, phone: e.target.value })); setErrors(er => ({ ...er, phone: "" })); }} />
+                  onChange={e => { setDetails({ ...details, phone: e.target.value }); setErrors({ ...errors, phone: "" }); }} />
                 {errors.phone && <div className="field-error">{errors.phone}</div>}
               </div>
               <div className="field">
                 <label className="label">Email Address</label>
                 <input className="input" placeholder="priya@email.com" value={details.email}
-                  onChange={e => { setDetails(d => ({ ...d, email: e.target.value })); setErrors(er => ({ ...er, email: "" })); }} />
+                  onChange={e => { setDetails({ ...details, email: e.target.value }); setErrors({ ...errors, email: "" }); }} />
                 {errors.email && <div className="field-error">{errors.email}</div>}
               </div>
               <div className="field">
                 <label className="label">Service Area</label>
                 <select className="input select" value={details.area}
-                  onChange={e => { setDetails(d => ({ ...d, area: e.target.value })); setErrors(er => ({ ...er, area: "" })); }}>
+                  onChange={e => { setDetails({ ...details, area: e.target.value }); setErrors({ ...errors, area: "" }); }}>
                   <option value="">Select your area</option>
                   {AREAS.map(a => <option key={a} value={a}>{a} — {a === "AREA1" ? "Anna Nagar" : a === "AREA2" ? "T. Nagar" : a === "AREA3" ? "Adyar" : "Velachery"}</option>)}
                 </select>

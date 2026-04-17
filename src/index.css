@@ -571,6 +571,56 @@ h3 {
   }
 }
 
+/* ---- Landing Navbar responsive ---- */
+
+/* Mobile: hide desktop links, show hamburger */
+@media (max-width: 640px) {
+  .nav-desktop-links {
+    display: none !important;
+  }
+
+  .nav-hamburger {
+    display: flex !important;
+  }
+
+  /* Mobile drawer hidden by default via React state, no extra CSS needed */
+  .nav-mobile-drawer {
+    /* ensure it appears above hero */
+    z-index: 99;
+  }
+}
+
+/* Tablet: keep desktop links but shrink padding */
+@media (min-width: 641px) {
+  .nav-hamburger {
+    display: none !important;
+  }
+
+  .nav-mobile-drawer {
+    display: none !important;
+  }
+}
+
+/* Hero on tiny screens */
+@media (max-width: 480px) {
+  .hero-grid {
+    padding: 64px 20px 40px;
+  }
+
+  .hero-subtitle {
+    font-size: 15px;
+  }
+
+  .cta-wrap {
+    flex-direction: column;
+  }
+
+  .cta-wrap .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 .hero-eyebrow {
   display: inline-flex;
   align-items: center;
@@ -724,41 +774,249 @@ h3 {
   flex-shrink: 0;
 }
 
-/* Dashboard layout */
+/* =============================================
+   DASHBOARD LAYOUT — Collapsible Sidebar
+   ============================================= */
+
+/* CSS variable for sidebar width — drives grid column */
+:root {
+  --sb-w: 260px;
+  --sb-collapsed: 68px;
+}
+
+/* Dashboard grid: sidebar + main */
 .dashboard {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: var(--sb-w) 1fr;
   min-height: 100vh;
 }
 
-@media (max-width: 900px) {
-  .dashboard {
-    grid-template-columns: 1fr;
-  }
-}
-
+/* Sidebar base */
 .sidebar {
   background: var(--navy);
-  padding: 28px 20px;
+  padding: 28px 12px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   position: sticky;
   top: 0;
   height: 100vh;
-  overflow-y: auto;
+  overflow: hidden;
+  width: var(--sb-w);
+  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 200;
 }
 
+/* Labels & section headers inside sidebar */
+.sidebar .nav-label,
+.sidebar-section,
+.sidebar-logo-text,
+.sidebar .sb-area {
+  transition: opacity 0.2s ease, width 0.2s ease;
+  opacity: 1;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* ---- TABLET (600–899px): icon-only collapsed, JS-controlled expand ---- */
+@media (min-width: 600px) and (max-width: 899px) {
+  .dashboard {
+    grid-template-columns: var(--sb-collapsed) 1fr;
+  }
+
+  .sidebar {
+    width: var(--sb-collapsed);
+    padding: 20px 10px;
+    position: sticky;
+    top: 0;
+  }
+
+  /* Expand when .sidebar-expanded class is applied via JS */
+  .sidebar.sidebar-expanded {
+    width: var(--sb-w);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
+  }
+
+  /* Hide text labels when collapsed, fade in when expanded */
+  .sidebar:not(.sidebar-expanded) .nav-label,
+  .sidebar:not(.sidebar-expanded) .sidebar-section,
+  .sidebar:not(.sidebar-expanded) .sidebar-logo-text,
+  .sidebar:not(.sidebar-expanded) .sb-area {
+    opacity: 0;
+    pointer-events: none;
+    width: 0;
+  }
+
+  /* Center icons when collapsed */
+  .sidebar:not(.sidebar-expanded) .nav-item {
+    justify-content: center;
+    gap: 0;
+  }
+
+  /* Center logo icon */
+  .sidebar:not(.sidebar-expanded) .sidebar-logo {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+    gap: 0;
+  }
+
+  .page-header,
+  .page-body {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+}
+
+/* ---- MOBILE (< 600px): sidebar hidden, bottom nav shown ---- */
+@media (max-width: 599px) {
+  .dashboard {
+    grid-template-columns: 1fr;
+    padding-bottom: 70px;
+    /* space for bottom nav */
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .page-header,
+  .page-body {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .page-header {
+    padding-top: 20px;
+    padding-bottom: 16px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  /* Bottom navigation bar for mobile */
+  .mobile-nav {
+    display: flex !important;
+  }
+}
+
+/* ---- DESKTOP (≥ 900px): hide mobile nav ---- */
+@media (min-width: 900px) {
+  .mobile-nav {
+    display: none !important;
+  }
+}
+
+/* Mobile bottom nav bar — hidden by default, shown at < 600px */
+.mobile-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  background: var(--navy);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  z-index: 500;
+  /* above page content */
+  align-items: center;
+  justify-content: space-around;
+  padding: 0 8px;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.25);
+}
+
+.mobile-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 6px;
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--slate);
+  font-size: 10px;
+  font-weight: 600;
+  transition: color 0.15s, background 0.15s;
+  flex: 1;
+  text-align: center;
+}
+
+.mobile-nav-item svg {
+  width: 20px;
+  height: 20px;
+}
+
+.mobile-nav-item.active {
+  color: var(--em);
+  background: rgba(0, 200, 150, 0.1);
+  border-radius: 10px;
+}
+
+/* Keep labels & logo text spanning full width */
+.nav-label {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Grid helpers — tighten on narrow layouts */
+@media (max-width: 768px) {
+
+  .grid-2,
+  .grid-3 {
+    grid-template-columns: 1fr !important;
+  }
+
+  .page-body {
+    padding-top: 20px;
+    padding-bottom: 20px;
+  }
+}
+
+/* Gauge grid: 2×2 on screens narrower than 800px */
+.gauge-grid {
+  display: flex;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 800px) {
+  .gauge-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  /* Shrink gauge container on small screens */
+  .gauge-grid>div {
+    width: 100%;
+    max-width: 160px;
+    margin: 0 auto;
+  }
+}
+
+@media (max-width: 500px) {
+  .page-body {
+    padding: 32px 20px !important;
+  }
+
+  .overviewCard {
+    padding: 25px 12px !important;
+  }
+}
+
+/* Sidebar static styles */
 .sidebar-logo {
   font-family: 'DM Serif Display', serif;
-  font-size: 26px;
+  font-size: 22px;
   color: var(--white);
-  padding: 0 8px 28px;
+  padding: 0 8px 24px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   display: flex;
   align-items: center;
   gap: 10px;
+  transition: all 0.28s;
 }
 
 .sidebar-section {
@@ -767,7 +1025,7 @@ h3 {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: rgba(138, 155, 176, 0.5);
-  padding: 16px 16px 8px;
+  padding: 12px 16px 6px;
 }
 
 .main-content {
@@ -793,16 +1051,8 @@ h3 {
   padding: 32px 40px;
 }
 
-@media (max-width: 768px) {
-
-  .page-header,
-  .page-body {
-    padding-left: 20px;
-    padding-right: 20px;
-  }
-}
-
 /* Chart bars */
+
 .chart-bar {
   flex: 1;
   display: flex;
