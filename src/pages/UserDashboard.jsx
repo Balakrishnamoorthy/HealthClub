@@ -1,75 +1,147 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { COLORS, AREAS, PLANS } from "../utils/constants";
 import { Icon } from "../components/Icons";
 import { useToast, Modal, Avatar, Gauge, MiniChart, BarChart, QRCode } from "../components/UI";
+import { useUser } from "../context/UserContext";
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 
+// ── Breadcrumb Component ─────────────────────────────────────────────────────
+function Breadcrumb({ section, navItems, onNavigate }) {
+  const nav = useNavigate();
+  const currentLabel = navItems.find(n => n.id === section)?.label || "Overview";
+  return (
+    <nav aria-label="breadcrumb" style={{
+      display: "flex", alignItems: "center", gap: 6,
+      fontSize: 13, color: COLORS.slate,
+      padding: "10px 0 18px",
+      flexWrap: "wrap"
+    }}>
+      <span
+        onClick={() => nav("/")}
+        style={{ cursor: "pointer", color: COLORS.emerald, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}
+      >
+        <span style={{ width: 14, height: 14, display: "inline-flex" }}><Icon.Home /></span>
+        Home
+      </span>
+      <span style={{ opacity: 0.4 }}>/</span>
+      <span
+        onClick={() => onNavigate("overview")}
+        style={{ cursor: "pointer", color: section === "overview" ? COLORS.navy : COLORS.slate, fontWeight: section === "overview" ? 700 : 400 }}
+      >
+        Dashboard
+      </span>
+      {section !== "overview" && (
+        <>
+          <span style={{ opacity: 0.4 }}>/</span>
+          <span style={{ color: COLORS.navy, fontWeight: 700 }}>{currentLabel}</span>
+        </>
+      )}
+    </nav>
+  );
+}
+
+// ── Star Rating subcomponent ─────────────────────────────────────────────────
+function StarRating({ value, onChange }) {
+  const [hover, setHover] = useState(0);
+  return (
+    <div style={{ display: "flex", gap: 6 }}>
+      {[1, 2, 3, 4, 5].map(star => (
+        <button
+          key={star}
+          type="button"
+          onClick={() => onChange(star)}
+          onMouseEnter={() => setHover(star)}
+          onMouseLeave={() => setHover(0)}
+          style={{
+            background: "none", border: "none", cursor: "pointer",
+            fontSize: 28, padding: 2, lineHeight: 1,
+            color: star <= (hover || value) ? "#FFB547" : "#ddd",
+            transition: "color 0.15s, transform 0.1s",
+            transform: star <= (hover || value) ? "scale(1.15)" : "scale(1)"
+          }}
+        >★</button>
+      ))}
+    </div>
+  );
+}
+
 export function UserDashboard({ user, onLogout }) {
   const [section, setSection] = useState("overview");
-  const [feedbackModal, setFeedbackModal] = useState(false);
-  const [feedback, setFeedback] = useState({ rating: 5, comment: "" });
-  const [rescheduleModal, setRescheduleModal] = useState(false);
+  const { updateUser } = useUser();
   const { show, node: toastNode } = useToast();
 
+  // ── Modal state ──────────────────────────────────────────────────────────
+  const [feedbackModal, setFeedbackModal] = useState(false);
+  const [rescheduleModal, setRescheduleModal] = useState(false);
+  const [upgradePlanModal, setUpgradePlanModal] = useState(false);
+
+  // ── Feedback state ───────────────────────────────────────────────────────
+  const [feedback, setFeedback] = useState({ rating: 5, comment: "" });
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+
+  // ── Reschedule state ─────────────────────────────────────────────────────
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [selectedOriginalDate, setSelectedOriginalDate] = useState("");
+  const [rescheduleLoading, setRescheduleLoading] = useState(false);
+
+  // ── Upgrade Plan state ───────────────────────────────────────────────────
+  const [selectedPlan, setSelectedPlan] = useState(null);
+  const [upgradeLoading, setUpgradeLoading] = useState(false);
+
+  // ── Profile state (controlled) ───────────────────────────────────────────
+  const [profileName, setProfileName] = useState(user?.name || "");
+  const [profileEmail, setProfileEmail] = useState(user?.email || "");
+  const [profileArea, setProfileArea] = useState(user?.area || "AREA1");
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  // ── Reports ──────────────────────────────────────────────────────────────
   const [reports, setReports] = useState([]);
   const [loadingReports, setLoadingReports] = useState(true);
 
   const plan = user?.planObj || PLANS.find(p => p.id === user?.plan) || PLANS[1];
-  // console.log(user)
-
-  const duration = (user?.duration).toUpperCase() || "3M";
-
-  const durationMap = {
-    "3M": "3 MONTHS",
-    "6M": "6 MONTHS",
-    "1Y": "1 YEAR",
-  };
-
+  const duration = (user?.duration || "3M").toUpperCase();
+  const durationMap = { "3M": "3 MONTHS", "6M": "6 MONTHS", "1Y": "1 YEAR" };
   const durationLabel = durationMap[duration] || duration;
 
   useEffect(() => {
     if (!user?.phone) return;
-
     fetch(`${API_BASE}/records/${encodeURIComponent(user.phone)}`)
       .then(res => res.json())
       .then(data => {
-        // Sort by timestamp
         if (Array.isArray(data)) {
-          const sorted = data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-          setReports(sorted);
+          setReports(data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp)));
         }
       })
-      .catch(err => {
-        console.error("Failed to load reports:", err);
-      })
-      .finally(() => {
-        setLoadingReports(false);
-      });
+      .catch(err => console.error("Failed to load reports:", err))
+      .finally(() => setLoadingReports(false));
   }, [user]);
 
   const latestReport = reports.length > 0 ? reports[reports.length - 1] : null;
   const glucoseData = reports.map(r => parseInt(r.glucose) || 0);
   const pressureData = reports.map(r => parseInt(r.systolic) || 0);
 
-  // Calendar state
+  // ── Schedule ─────────────────────────────────────────────────────────────
   const today = new Date();
   const [calMonth, setCalMonth] = useState(today.getMonth());
   const [calYear, setCalYear] = useState(today.getFullYear());
   const getDaysInMonth = (m, y) => new Date(y, m + 1, 0).getDate();
   const getFirstDay = (m, y) => new Date(y, m, 1).getDay();
 
-  // Real schedule from backend
   const [scheduleData, setScheduleData] = useState(null);
-  useEffect(() => {
+
+  // Extract as a named function so we can refresh after reschedule
+  const fetchSchedule = () => {
     if (!user?.id) return;
     fetch(`${API_BASE}/user-schedule/${user.id}`)
       .then(res => res.json())
       .then(data => setScheduleData(data))
       .catch(err => console.error("Failed to load schedule:", err));
-  }, [user]);
+  };
 
-  // Derive set of 'YYYY-MM-DD' strings for the current calendar month
+  useEffect(() => { fetchSchedule(); }, [user]);
+
   const scheduledDates = new Set(scheduleData?.schedule || []);
   const scheduledDaysInMonth = Array.from(scheduledDates)
     .filter(d => {
@@ -81,6 +153,7 @@ export function UserDashboard({ user, onLogout }) {
   const nextVisit = scheduleData?.nextVisit || null;
   const upcomingVisits = scheduleData?.upcomingVisits?.slice(0, 5) || [];
 
+  // ── Nav items ────────────────────────────────────────────────────────────
   const navItems = [
     { id: "overview", label: "Overview", icon: <Icon.Home /> },
     { id: "reports", label: "Health Reports", icon: <Icon.BarChart /> },
@@ -89,7 +162,7 @@ export function UserDashboard({ user, onLogout }) {
     { id: "profile", label: "Profile", icon: <Icon.Settings /> },
   ];
 
-  // Collapsible sidebar state (tablet only)
+  // ── Sidebar collapse ─────────────────────────────────────────────────────
   const sidebarRef = useRef(null);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
 
@@ -103,9 +176,409 @@ export function UserDashboard({ user, onLogout }) {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
+  // ── Handlers ─────────────────────────────────────────────────────────────
+
+  // Date helpers
+  const todayISO = new Date().toISOString().split("T")[0];
+  const addDaysISO = (dateStr, days) => {
+    const d = new Date(dateStr + "T00:00:00");
+    d.setDate(d.getDate() + days);
+    return d.toISOString().split("T")[0];
+  };
+  const tomorrowISO = addDaysISO(todayISO, 1);
+
+  // Compute min/max for the date picker based on the selected original date
+  const computeRescheduleRange = (originalDate) => {
+    if (!originalDate) return { min: tomorrowISO, max: "" };
+    if (originalDate <= todayISO) {
+      // Visit is today or already in the past — only postpone allowed
+      const max = addDaysISO(originalDate, 2);
+      return { min: tomorrowISO, max: max < tomorrowISO ? addDaysISO(todayISO, 2) : max };
+    } else {
+      // Future visit — allow ±2 days but never before today
+      const minus2 = addDaysISO(originalDate, -2);
+      return { min: minus2 < todayISO ? todayISO : minus2, max: addDaysISO(originalDate, 2) };
+    }
+  };
+
+  const { min: rescheduleMin, max: rescheduleMax } = computeRescheduleRange(selectedOriginalDate);
+  // Whether prepone is disallowed (visit is today or past)
+  const onlyPostpone = selectedOriginalDate <= todayISO;
+
+  const handleReschedule = async () => {
+    if (!selectedOriginalDate) { show("Please select a visit to reschedule", "error"); return; }
+    if (!rescheduleDate) { show("Please pick a new date", "error"); return; }
+    if (rescheduleDate < tomorrowISO) { show("New date must be in the future", "error"); return; }
+    if (onlyPostpone && rescheduleDate <= selectedOriginalDate) {
+      show("This visit has already arrived — you can only postpone it", "error"); return;
+    }
+    setRescheduleLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/reschedule`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user?.id,
+          originalDate: selectedOriginalDate,  // the effective date user sees
+          newDate: rescheduleDate
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        show(`Visit rescheduled to ${new Date(rescheduleDate + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`, "success");
+        setRescheduleModal(false);
+        setRescheduleDate("");
+        setSelectedOriginalDate("");
+        // Refresh schedule so next-visit card updates immediately
+        fetchSchedule();
+      } else {
+        show(data.error || "Failed to reschedule", "error");
+      }
+    } catch {
+      show("Network error. Please try again.", "error");
+    } finally {
+      setRescheduleLoading(false);
+    }
+  };
+
+  const handleUpgradePlan = async () => {
+    if (!selectedPlan) { show("Please select a plan", "error"); return; }
+    setUpgradeLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/user/${user?.id}/upgrade`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: selectedPlan.id, planName: selectedPlan.name })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        updateUser({ plan: selectedPlan.id, planObj: selectedPlan });
+        show(`Upgraded to ${selectedPlan.name}!`, "success");
+        setUpgradePlanModal(false);
+        setSelectedPlan(null);
+      } else {
+        show(data.error || "Upgrade failed", "error");
+      }
+    } catch {
+      show("Network error. Please try again.", "error");
+    } finally {
+      setUpgradeLoading(false);
+    }
+  };
+
+  const handleSubmitFeedback = async () => {
+    if (!feedback.comment.trim()) { show("Please write a comment", "error"); return; }
+    setFeedbackLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user?.id,
+          userName: user?.name,
+          phone: user?.phone,
+          rating: feedback.rating,
+          comment: feedback.comment
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        show("Thank you for your feedback! 💚", "success");
+        setFeedbackModal(false);
+        setFeedback({ rating: 5, comment: "" });
+      } else {
+        show(data.error || "Failed to submit feedback", "error");
+      }
+    } catch {
+      show("Network error. Please try again.", "error");
+    } finally {
+      setFeedbackLoading(false);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (!profileName.trim()) { show("Name cannot be empty", "error"); return; }
+    setProfileSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/user/${user?.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: profileName, email: profileEmail, area: profileArea })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        updateUser({ name: profileName, email: profileEmail, area: profileArea });
+        show("Profile saved successfully!", "success");
+      } else {
+        show(data.error || "Failed to save profile", "error");
+      }
+    } catch {
+      show("Network error. Please try again.", "error");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  // ── Shared modal footer button style ──────────────────────────────────────
+  const primaryBtnStyle = { display: "flex", alignItems: "center", justifyContent: "center", gap: 8 };
+
   return (
     <div className="dashboard">
       {toastNode}
+
+      {/* ── MODALS ── */}
+
+      {/* Feedback Modal */}
+      {feedbackModal && (
+        <Modal
+          title="Share Your Feedback"
+          onClose={() => { setFeedbackModal(false); setFeedback({ rating: 5, comment: "" }); }}
+          footer={
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setFeedbackModal(false)}>Cancel</button>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={handleSubmitFeedback}
+                disabled={feedbackLoading}
+                style={primaryBtnStyle}
+              >
+                {feedbackLoading
+                  ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Submitting...</>
+                  : "Submit Feedback"}
+              </button>
+            </div>
+          }
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <div style={{ background: COLORS.offWhite, borderRadius: 12, padding: 20, textAlign: "center" }}>
+              <p style={{ fontSize: 14, color: COLORS.slate, marginBottom: 12 }}>How would you rate your HealthClub experience?</p>
+              <div style={{ display: "flex", justifyContent: "center" }}>
+                <StarRating value={feedback.rating} onChange={r => setFeedback(f => ({ ...f, rating: r }))} />
+              </div>
+              <p style={{ marginTop: 10, fontSize: 13, fontWeight: 700, color: COLORS.navy }}>
+                {["", "Poor", "Fair", "Good", "Great", "Excellent! 🎉"][feedback.rating]}
+              </p>
+            </div>
+            <div>
+              <label className="label" style={{ display: "block", fontSize: 12, color: COLORS.slate, marginBottom: 6 }}>
+                Your comments (required)
+              </label>
+              <textarea
+                className="input"
+                placeholder="Tell us about your experience with HealthClub and your HSA..."
+                value={feedback.comment}
+                onChange={e => setFeedback(f => ({ ...f, comment: e.target.value }))}
+                rows={4}
+                style={{ width: "100%", padding: 12, resize: "vertical", fontFamily: "inherit", fontSize: 14, borderRadius: 10, border: "1px solid #e0e0e0" }}
+              />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 12, background: COLORS.emeraldLight, borderRadius: 10, fontSize: 13, color: COLORS.navy }}>
+              <span>💚</span> Your feedback helps us improve the experience for all members.
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Reschedule Modal */}
+      {rescheduleModal && (
+        <Modal
+          title="Reschedule Your Visit"
+          onClose={() => { setRescheduleModal(false); setRescheduleDate(""); setSelectedOriginalDate(""); }}
+          footer={
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setRescheduleModal(false)}>Cancel</button>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={handleReschedule}
+                disabled={rescheduleLoading || !rescheduleDate || !selectedOriginalDate}
+                style={primaryBtnStyle}
+              >
+                {rescheduleLoading
+                  ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Saving...</>
+                  : "Confirm Reschedule"}
+              </button>
+            </div>
+          }
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+            {/* Step 1: Select which visit to reschedule */}
+            <div>
+              <label className="label" style={{ display: "block", fontSize: 12, color: COLORS.slate, marginBottom: 8, fontWeight: 700 }}>
+                Which visit do you want to reschedule?
+              </label>
+              {upcomingVisits.length === 0 ? (
+                <div style={{ padding: 14, background: COLORS.offWhite, borderRadius: 10, fontSize: 13, color: COLORS.slate }}>
+                  No upcoming visits found.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {upcomingVisits.map((dateStr, idx) => {
+                    const isToday = dateStr === todayISO;
+                    const isPast = dateStr < todayISO;
+                    const isSelected = selectedOriginalDate === dateStr;
+                    return (
+                      <div
+                        key={idx}
+                        onClick={() => {
+                          setSelectedOriginalDate(dateStr);
+                          setRescheduleDate(""); // reset date when switching visit
+                        }}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 12,
+                          padding: "12px 14px", borderRadius: 10,
+                          border: `2px solid ${isSelected ? COLORS.emerald : "#e5e7eb"}`,
+                          background: isSelected ? COLORS.emeraldLight : "white",
+                          cursor: "pointer", transition: "all 0.15s"
+                        }}
+                      >
+                        <div style={{
+                          width: 32, height: 32, borderRadius: 8,
+                          background: isSelected ? COLORS.emerald : COLORS.offWhite,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 13, fontWeight: 700,
+                          color: isSelected ? COLORS.navy : COLORS.slate, flexShrink: 0
+                        }}>
+                          {idx + 1}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: COLORS.navy }}>
+                            {new Date(dateStr + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+                          </div>
+                          <div style={{ fontSize: 11, color: COLORS.slate }}>HSA Home Visit · {user?.area}</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          {isToday && <span className="badge badge-warning" style={{ fontSize: 10 }}>Today</span>}
+                          {isPast && <span className="badge" style={{ fontSize: 10, background: "#fee", color: "#c00" }}>Past</span>}
+                          {isSelected && <span className="badge badge-success" style={{ fontSize: 10 }}>Selected</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Step 2: Pick new date (only shown after selecting a visit) */}
+            {selectedOriginalDate && (
+              <>
+                <div style={{ height: 1, background: "#f0f0f0" }} />
+                {/* Constraint info */}
+                <div style={{
+                  display: "flex", alignItems: "flex-start", gap: 8,
+                  padding: 12, borderRadius: 10, fontSize: 13,
+                  background: onlyPostpone ? "#FFF8E6" : COLORS.emeraldLight,
+                  color: onlyPostpone ? "#92680A" : COLORS.navy
+                }}>
+                  <span style={{ flexShrink: 0 }}>{onlyPostpone ? "⚠️" : "ℹ️"}</span>
+                  <span>
+                    {onlyPostpone
+                      ? `This visit is ${selectedOriginalDate === todayISO ? "today" : "in the past"} — you can only postpone it (up to ${new Date(rescheduleMax + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}).`
+                      : `You can reschedule this visit ±2 days (${new Date(rescheduleMin + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })} – ${new Date(rescheduleMax + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}).`
+                    }
+                  </span>
+                </div>
+                <div>
+                  <label className="label" style={{ display: "block", fontSize: 12, color: COLORS.slate, marginBottom: 6, fontWeight: 700 }}>
+                    Select New Date
+                  </label>
+                  <input
+                    type="date"
+                    className="input"
+                    value={rescheduleDate}
+                    min={rescheduleMin}
+                    max={rescheduleMax}
+                    onChange={e => setRescheduleDate(e.target.value)}
+                    style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #e0e0e0", fontSize: 15 }}
+                  />
+                </div>
+                <div style={{ fontSize: 12, color: COLORS.slate, padding: "0 4px" }}>
+                  ⚡ Your HSA will be notified of the change. Rescheduling is limited to once per interval.
+                </div>
+              </>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {/* Upgrade Plan Modal */}
+      {upgradePlanModal && (
+        <Modal
+          title="Upgrade Your Plan"
+          size="lg"
+          onClose={() => { setUpgradePlanModal(false); setSelectedPlan(null); }}
+          footer={
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setUpgradePlanModal(false)}>Cancel</button>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={handleUpgradePlan}
+                disabled={upgradeLoading || !selectedPlan || selectedPlan?.id === plan?.id}
+                style={primaryBtnStyle}
+              >
+                {upgradeLoading
+                  ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Upgrading...</>
+                  : selectedPlan
+                    ? `Upgrade to ${selectedPlan.name}`
+                    : "Select a Plan"}
+              </button>
+            </div>
+          }
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <p style={{ fontSize: 14, color: COLORS.slate }}>
+              Currently on <strong style={{ color: COLORS.navy }}>{plan?.name}</strong>. Select a new plan below.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {PLANS.map(p => {
+                const isCurrent = p.id === (user?.plan || plan?.id);
+                const isSelected = selectedPlan?.id === p.id;
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => !isCurrent && setSelectedPlan(p)}
+                    style={{
+                      border: `2px solid ${isSelected ? p.color : isCurrent ? COLORS.emerald : "#e5e7eb"}`,
+                      borderRadius: 14,
+                      padding: "16px 20px",
+                      cursor: isCurrent ? "not-allowed" : "pointer",
+                      opacity: isCurrent ? 0.6 : 1,
+                      background: isSelected ? p.color + "10" : isCurrent ? COLORS.emeraldLight : "white",
+                      transition: "all 0.18s",
+                      display: "flex", alignItems: "center", gap: 16
+                    }}
+                  >
+                    <div style={{ width: 44, height: 44, borderRadius: 12, background: p.color + "22", display: "flex", alignItems: "center", justifyContent: "center", color: p.color, flexShrink: 0 }}>
+                      <Icon.Activity />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontWeight: 700, color: COLORS.navy }}>{p.name}</span>
+                        {isCurrent && <span className="badge badge-success" style={{ fontSize: 10 }}>Current</span>}
+                        {p.popular && !isCurrent && <span className="badge badge-info" style={{ fontSize: 10 }}>Popular</span>}
+                      </div>
+                      <div style={{ fontSize: 13, color: COLORS.slate }}>{p.description}</div>
+                      <div style={{ fontSize: 13, color: COLORS.slate, marginTop: 4 }}>
+                        {p.features.slice(0, 2).join(" · ")}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: p.color, fontFamily: "'DM Serif Display', serif" }}>
+                        ₹{p.price.toLocaleString()}
+                      </div>
+                      <div style={{ fontSize: 11, color: COLORS.slate }}>/month</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 12, color: COLORS.slate, textAlign: "center" }}>
+              Plan changes are prorated · No hidden fees · Cancel anytime
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* SIDEBAR */}
       <aside
         ref={sidebarRef}
@@ -132,11 +605,13 @@ export function UserDashboard({ user, onLogout }) {
 
       {/* MAIN */}
       <main className="main-content">
+
         {/* OVERVIEW */}
         {section === "overview" && (
           <>
             <div className="page-header">
               <div>
+                <Breadcrumb section={section} navItems={navItems} onNavigate={setSection} />
                 <p style={{ fontSize: 13, color: COLORS.slate, marginBottom: 4 }}>Welcome back 👋</p>
                 <h1 className="page-title">{user?.name || "Member"}</h1>
               </div>
@@ -210,6 +685,7 @@ export function UserDashboard({ user, onLogout }) {
                   </div>
                 </>
               )}
+
               {/* Upcoming + Subscription */}
               <div className="grid-2" style={{ gap: 20, marginTop: 20 }}>
                 <div className="card" style={{ padding: 24 }}>
@@ -220,10 +696,25 @@ export function UserDashboard({ user, onLogout }) {
                       <div>
                         {nextVisit ? (
                           <>
-                            <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.navy }}>
-                              {new Date(nextVisit + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.navy }}>
+                                {nextVisit === todayISO
+                                  ? "Today"
+                                  : new Date(nextVisit + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })
+                                }
+                              </div>
+                              {nextVisit === todayISO && (
+                                <span className="badge badge-warning" style={{ fontSize: 10 }}>Today</span>
+                              )}
                             </div>
                             <div style={{ fontSize: 13, color: COLORS.slate }}>HSA Home Visit · {user?.area || ""}</div>
+                            {nextVisit === todayISO && upcomingVisits.length > 1 && (
+                              <div style={{ fontSize: 12, color: COLORS.slate, marginTop: 4 }}>
+                                Next after today: <strong style={{ color: COLORS.navy }}>
+                                  {new Date(upcomingVisits[1] + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                                </strong>
+                              </div>
+                            )}
                           </>
                         ) : (
                           <>
@@ -234,7 +725,16 @@ export function UserDashboard({ user, onLogout }) {
                       </div>
                     </div>
                     <div style={{ fontSize: 13, color: COLORS.slate, marginBottom: 16 }}>Location: <strong style={{ color: COLORS.navy }}>{user?.area || "N/A"}</strong></div>
-                    <button className="btn btn-outline btn-sm" onClick={() => setRescheduleModal(true)} style={{ width: "100%", justifyContent: "center" }}>
+                    <button
+                      className="btn btn-outline btn-sm"
+                      onClick={() => {
+                        // Pre-select the first upcoming visit (or nextVisit) on open
+                        setSelectedOriginalDate(upcomingVisits[0] || nextVisit || "");
+                        setRescheduleDate("");
+                        setRescheduleModal(true);
+                      }}
+                      style={{ width: "100%", justifyContent: "center" }}
+                    >
                       <Icon.Edit /> Reschedule Visit
                     </button>
                   </div>
@@ -243,7 +743,12 @@ export function UserDashboard({ user, onLogout }) {
                   <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: COLORS.navy, marginBottom: 16 }}>Subscription</h3>
                   <div className="stat-row" style={{ borderBottom: "1px solid rgba(0,0,0,0.05)", padding: "8px 0", display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: 14, color: COLORS.slate }}>Plan</span><span className="badge badge-success">{plan.name}</span></div>
                   <div className="stat-row" style={{ borderBottom: "1px solid rgba(0,0,0,0.05)", padding: "8px 0", display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: 14, color: COLORS.slate }}>Duration</span><span className="badge badge-success">{durationLabel}</span></div>
-                  <button className="btn btn-outline btn-sm mt-16">Upgrade Plan →</button>
+                  <button
+                    className="btn btn-outline btn-sm mt-16"
+                    onClick={() => setUpgradePlanModal(true)}
+                  >
+                    Upgrade Plan →
+                  </button>
                 </div>
               </div>
             </div>
@@ -254,13 +759,15 @@ export function UserDashboard({ user, onLogout }) {
         {section === "reports" && (
           <>
             <div className="page-header">
-              <h1 className="page-title">Health Reports</h1>
+              <div>
+                <Breadcrumb section={section} navItems={navItems} onNavigate={setSection} />
+                <h1 className="page-title">Health Reports</h1>
+              </div>
               <button className="btn btn-outline btn-sm"><Icon.Upload /> Export PDF</button>
             </div>
             <div className="page-body">
               {reports.length > 0 ? (
                 <>
-                  {/* Plan-aware metric charts */}
                   {plan.metrics?.includes("blood_glucose") && (
                     <div className="card" style={{ padding: 28, marginBottom: 24 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
@@ -353,7 +860,10 @@ export function UserDashboard({ user, onLogout }) {
         {section === "calendar" && (
           <>
             <div className="page-header">
-              <h1 className="page-title">Schedule</h1>
+              <div>
+                <Breadcrumb section={section} navItems={navItems} onNavigate={setSection} />
+                <h1 className="page-title">Schedule</h1>
+              </div>
               <div style={{ display: "flex", gap: 10 }}>
                 <button className="btn btn-ghost btn-sm" onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1); } else setCalMonth(m => m - 1); }}>←</button>
                 <span style={{ fontWeight: 600, minWidth: 130, textAlign: "center" }}>
@@ -385,7 +895,7 @@ export function UserDashboard({ user, onLogout }) {
                           borderRadius: 8,
                           border: isToday ? `2px solid ${COLORS.emerald}` : "none",
                           background: isScheduled ? COLORS.emerald : "transparent",
-                          color: isScheduled ? COLORS.navy : COLORS.navy,
+                          color: COLORS.navy,
                           fontWeight: isScheduled ? 700 : 400,
                           cursor: isScheduled ? "pointer" : "default"
                         }}>
@@ -427,7 +937,10 @@ export function UserDashboard({ user, onLogout }) {
         {section === "notifications" && (
           <>
             <div className="page-header">
-              <h1 className="page-title">Notifications</h1>
+              <div>
+                <Breadcrumb section={section} navItems={navItems} onNavigate={setSection} />
+                <h1 className="page-title">Notifications</h1>
+              </div>
             </div>
             <div className="page-body">
               <div className="card" style={{ padding: 8 }}>
@@ -441,7 +954,10 @@ export function UserDashboard({ user, onLogout }) {
         {section === "profile" && (
           <>
             <div className="page-header">
-              <h1 className="page-title">Profile & Settings</h1>
+              <div>
+                <Breadcrumb section={section} navItems={navItems} onNavigate={setSection} />
+                <h1 className="page-title">Profile & Settings</h1>
+              </div>
             </div>
             <div className="page-body">
               <div className="grid-2" style={{ gap: 24 }}>
@@ -463,14 +979,47 @@ export function UserDashboard({ user, onLogout }) {
                 <div>
                   <div className="card" style={{ padding: 24, marginBottom: 16 }}>
                     <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 18, color: COLORS.navy, marginBottom: 16 }}>Account Details</h3>
-                    <div className="field" style={{ marginBottom: 12 }}><label className="label" style={{ display: "block", fontSize: 12, color: COLORS.slate }}>Name</label><input className="input" defaultValue={user?.name || ""} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ddd" }} /></div>
-                    <div className="field" style={{ marginBottom: 12 }}><label className="label" style={{ display: "block", fontSize: 12, color: COLORS.slate }}>Email</label><input className="input" defaultValue={user?.email || ""} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ddd" }} /></div>
-                    <div className="field" style={{ marginBottom: 12 }}><label className="label" style={{ display: "block", fontSize: 12, color: COLORS.slate }}>Area</label>
-                      <select className="input select" defaultValue={user?.area || "AREA1"} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ddd" }}>
+                    <div className="field" style={{ marginBottom: 12 }}>
+                      <label className="label" style={{ display: "block", fontSize: 12, color: COLORS.slate }}>Full Name</label>
+                      <input
+                        className="input"
+                        value={profileName}
+                        onChange={e => setProfileName(e.target.value)}
+                        placeholder="Your full name"
+                        style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
+                      />
+                    </div>
+                    <div className="field" style={{ marginBottom: 12 }}>
+                      <label className="label" style={{ display: "block", fontSize: 12, color: COLORS.slate }}>Email</label>
+                      <input
+                        className="input"
+                        value={profileEmail}
+                        onChange={e => setProfileEmail(e.target.value)}
+                        placeholder="your@email.com"
+                        style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
+                      />
+                    </div>
+                    <div className="field" style={{ marginBottom: 16 }}>
+                      <label className="label" style={{ display: "block", fontSize: 12, color: COLORS.slate }}>Service Area</label>
+                      <select
+                        className="input select"
+                        value={profileArea}
+                        onChange={e => setProfileArea(e.target.value)}
+                        style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
+                      >
                         {AREAS.map(a => <option key={a}>{a}</option>)}
                       </select>
                     </div>
-                    <button className="btn btn-primary btn-sm" onClick={() => show("Profile updated successfully!")}>Save Changes</button>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={handleSaveProfile}
+                      disabled={profileSaving}
+                      style={{ display: "flex", alignItems: "center", gap: 8 }}
+                    >
+                      {profileSaving
+                        ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Saving...</>
+                        : "Save Changes"}
+                    </button>
                   </div>
                 </div>
               </div>

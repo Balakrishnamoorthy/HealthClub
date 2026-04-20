@@ -1,17 +1,34 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom"
 import { ArrowRight, ChevronDown } from "lucide-react"
 import { COLORS, PLANS } from "../utils/constants";
 import { Icon } from "../components/Icons";
+import { useUser } from "../context/UserContext";
 
 export function LandingPage() {
   const [activeFaq, setActiveFaq] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const nav = useNavigate();
+  const dropdownRef = useRef(null);
+  const { user, userRole, logout } = useUser();
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setProfileDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const onGetStarted = () => {
     nav("/onboarding");
   }
+
+  const dashboardPath = userRole === "hsa" ? "/hsa" : userRole === "admin" ? "/admin" : "/user";
 
   const faqs = [
     { q: "How does home collection work?", a: "Our Health Service Assistants (HSAs) visit your home at your scheduled time. They use certified medical devices to collect readings and upload them directly to your dashboard." },
@@ -37,21 +54,117 @@ export function LandingPage() {
     );
   }
 
+  // Profile initials for nav
+  const userName = user?.name || userRole || "User";
+  const userInitials = userName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  const avatarColors = ["#00C896", "#4ECDC4", "#FFD93D", "#FF6B6B", "#3B9EFF", "#A855F7"];
+  const navAvatarBg = avatarColors[userName.charCodeAt(0) % avatarColors.length];
+
   return (
     <div>
       <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 100, background: "rgba(10,22,40,0.95)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "0 clamp(16px, 5vw, 80px)", display: "flex", alignItems: "center", justifyContent: "space-between", height: 64 }}>
         {/* Logo */}
         <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, color: "white", display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ width: 28, height: 28, background: COLORS.emerald, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ width: 14, height: 14, color: COLORS.navy }}><Icon.Heart /></span>
+            <span style={{ width: 24, height: 24, color: COLORS.navy }}><Icon.Heart /></span>
           </span>
           HealthClub
         </div>
 
         {/* Desktop links */}
         <div className="nav-desktop-links" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Link to="/login" className="btn btn-ghost btn-sm" style={{ color: "rgba(255,255,255,0.7)" }}>Login</Link>
-          <Link to="/onboarding" className="btn btn-primary btn-sm">Get Started →</Link>
+          {userRole ? (
+            // Logged-in: show profile avatar + dropdown
+            <div ref={dropdownRef} style={{ position: "relative" }}>
+              <button
+                id="nav-profile-avatar"
+                onClick={() => setProfileDropdownOpen(o => !o)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  borderRadius: 32, padding: "6px 14px 6px 6px",
+                  cursor: "pointer", color: "white",
+                  transition: "background 0.2s"
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.12)"}
+                onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+              >
+                <div style={{
+                  width: 30, height: 30, borderRadius: "50%",
+                  background: navAvatarBg + "33", color: navAvatarBg,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 12, fontWeight: 700, border: `2px solid ${navAvatarBg}55`
+                }}>
+                  {userInitials}
+                </div>
+                <span style={{ fontSize: 13, fontWeight: 500, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {userName}
+                </span>
+                <ChevronDown size={14} style={{ opacity: 0.6, transform: profileDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+              </button>
+
+              {/* Dropdown */}
+              {profileDropdownOpen && (
+                <div style={{
+                  position: "absolute", top: "calc(100% + 10px)", right: 0,
+                  background: "white", borderRadius: 14, minWidth: 200,
+                  boxShadow: "0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08)",
+                  overflow: "hidden", animation: "fadeUp 0.15s ease",
+                  border: "1px solid rgba(0,0,0,0.06)"
+                }}>
+                  {/* User info header */}
+                  <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid #f0f0f0" }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.navy }}>{userName}</div>
+                    <div style={{ fontSize: 11, color: COLORS.slate, marginTop: 2, textTransform: "capitalize" }}>
+                      {userRole === "user" ? "Member" : userRole === "hsa" ? "Health Service Assistant" : "Admin"}
+                    </div>
+                  </div>
+                  {/* Actions */}
+                  <div style={{ padding: "8px 0" }}>
+                    <button
+                      id="nav-go-to-dashboard"
+                      onClick={() => { setProfileDropdownOpen(false); nav(dashboardPath); }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 10,
+                        width: "100%", padding: "10px 16px",
+                        background: "none", border: "none", cursor: "pointer",
+                        fontSize: 13, color: COLORS.navy, fontWeight: 500,
+                        textAlign: "left"
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = COLORS.offWhite}
+                      onMouseLeave={e => e.currentTarget.style.background = "none"}
+                    >
+                      <span style={{ width: 16, height: 16, color: COLORS.emerald }}><Icon.Home /></span>
+                      Go to Dashboard
+                    </button>
+                    <button
+                      id="nav-logout"
+                      onClick={() => { setProfileDropdownOpen(false); logout(); }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 10,
+                        width: "100%", padding: "10px 16px",
+                        background: "none", border: "none", cursor: "pointer",
+                        fontSize: 13, color: COLORS.danger, fontWeight: 500,
+                        textAlign: "left"
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = "#FFF0F3"}
+                      onMouseLeave={e => e.currentTarget.style.background = "none"}
+                    >
+                      <span style={{ width: 16, height: 16 }}><Icon.Logout /></span>
+                      Log Out
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            // Not logged in: show Login + Get Started
+            <>
+              <Link to="/login" className="btn btn-ghost btn-sm" style={{ color: "rgba(255,255,255,0.7)" }}>Login</Link>
+              <Link to="/onboarding" className="btn btn-primary btn-sm">Get Started <ArrowRight size={18} /></Link>
+            </>
+          )}
         </div>
 
         {/* Hamburger — mobile only */}
@@ -62,9 +175,9 @@ export function LandingPage() {
           style={{ display: "none", background: "none", border: "none", cursor: "pointer", padding: 8, color: "white" }}
         >
           {mobileMenuOpen ? (
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           ) : (
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></svg>
           )}
         </button>
       </nav>
@@ -75,8 +188,46 @@ export function LandingPage() {
           style={{ position: "fixed", top: 64, left: 0, right: 0, zIndex: 99, background: "rgba(10,22,40,0.98)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(255,255,255,0.08)", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 12, animation: "fadeUp 0.2s ease" }}
           className="nav-mobile-drawer"
         >
-          <Link to="/login" onClick={() => setMobileMenuOpen(false)} className="btn btn-ghost" style={{ color: "rgba(255,255,255,0.85)", justifyContent: "center", width: "100%" }}>Login</Link>
-          <Link to="/onboarding" onClick={() => setMobileMenuOpen(false)} className="btn btn-primary" style={{ justifyContent: "center", width: "100%" }}>Get Started →</Link>
+          {userRole ? (
+            <>
+              {/* Logged-in mobile: profile info + actions */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0 16px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: "50%",
+                  background: navAvatarBg + "33", color: navAvatarBg,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 14, fontWeight: 700
+                }}>
+                  {userInitials}
+                </div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "white" }}>{userName}</div>
+                  <div style={{ fontSize: 11, color: COLORS.slate, textTransform: "capitalize" }}>
+                    {userRole === "user" ? "Member" : userRole === "hsa" ? "HSA" : "Admin"}
+                  </div>
+                </div>
+              </div>
+              <button
+                className="btn btn-ghost"
+                onClick={() => { setMobileMenuOpen(false); nav(dashboardPath); }}
+                style={{ color: "rgba(255,255,255,0.85)", justifyContent: "center", width: "100%" }}
+              >
+                Go to Dashboard
+              </button>
+              <button
+                className="btn btn-outline"
+                onClick={() => { setMobileMenuOpen(false); logout(); }}
+                style={{ color: COLORS.danger, borderColor: COLORS.danger + "44", justifyContent: "center", width: "100%" }}
+              >
+                Log Out
+              </button>
+            </>
+          ) : (
+            <>
+              <Link to="/login" onClick={() => setMobileMenuOpen(false)} className="btn btn-ghost" style={{ color: "rgba(255,255,255,0.85)", justifyContent: "center", width: "100%" }}>Login</Link>
+              <Link to="/onboarding" onClick={() => setMobileMenuOpen(false)} className="btn btn-primary" style={{ justifyContent: "center", width: "100%" }}>Get Started <ArrowRight size={18} /></Link>
+            </>
+          )}
         </div>
       )}
 
@@ -92,14 +243,25 @@ export function LandingPage() {
             </div>
             <h1 className="hero-title">Your health, <em>monitored</em> from home.</h1>
             <p className="hero-subtitle">Professional health tracking for Blood Glucose, Blood Pressure, and Cholesterol — delivered by certified HSAs at your doorstep.</p>
-
           </div>
           <div>
             <div className="cta-wrap">
-              <Link to="/onboarding" className="btn btn-primary" style={{ animation: "glow 3s ease-in-out infinite" }}>
-                Get Started Free <ArrowRight size={18} />
-              </Link>
-              <Link to="/login" className="btn btn-ghost">Login to Dashboard</Link>
+              {userRole ? (
+                // Already logged in — show Go to Dashboard CTA
+                <>
+                  <button className="btn btn-primary" style={{ animation: "glow 3s ease-in-out infinite" }} onClick={() => nav(dashboardPath)}>
+                    Go to Dashboard <ArrowRight size={18} />
+                  </button>
+                  <button className="btn btn-ghost" onClick={logout}>Log Out</button>
+                </>
+              ) : (
+                <>
+                  <Link to="/onboarding" className="btn btn-primary" style={{ animation: "glow 3s ease-in-out infinite" }}>
+                    Get Started <ArrowRight size={18} />
+                  </Link>
+                  <Link to="/login" className="btn btn-ghost">Login to Dashboard</Link>
+                </>
+              )}
             </div>
             <div style={{ display: "flex", gap: 32, marginTop: 48 }}>
               {[["2,400+", "Active Users"], ["4", "Service Areas"], ["98%", "Satisfaction"]].map(([v, l]) => (
@@ -225,9 +387,15 @@ export function LandingPage() {
       <section style={{ padding: "80px", background: COLORS.emerald, textAlign: "center" }}>
         <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 42, color: COLORS.navy, marginBottom: 16 }}>Ready to take control of your health?</h2>
         <p style={{ fontSize: 18, color: COLORS.navyMid, marginBottom: 36 }}>Join 2,400+ members monitoring their health from home.</p>
-        <button className="btn btn-lg" onClick={onGetStarted} style={{ background: COLORS.navy, color: "white" }}>
-          Get Started Today <ArrowRight />
-        </button>
+        {userRole ? (
+          <button className="btn btn-lg" onClick={() => nav(dashboardPath)} style={{ background: COLORS.navy, color: "white" }}>
+            Go to Dashboard <ArrowRight />
+          </button>
+        ) : (
+          <button className="btn btn-lg" onClick={onGetStarted} style={{ background: COLORS.navy, color: "white" }}>
+            Get Started Today <ArrowRight />
+          </button>
+        )}
       </section>
 
       <footer style={{ background: COLORS.navy, padding: "40px 80px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>

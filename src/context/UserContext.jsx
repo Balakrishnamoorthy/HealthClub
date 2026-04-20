@@ -54,6 +54,13 @@ export function UserProvider({ children }) {
     saveSession(role, data);
   };
 
+  // Update user data in state + session (used after profile save / plan upgrade)
+  const updateUser = (updatedData) => {
+    const merged = { ...user, ...updatedData };
+    setUser(merged);
+    saveSession(userRole, merged);
+  };
+
   const logout = () => {
     setUserRole(null);
     setUser(null);
@@ -62,7 +69,7 @@ export function UserProvider({ children }) {
   };
 
   return (
-    <UserContext.Provider value={{ user, userRole, login, logout }}>
+    <UserContext.Provider value={{ user, userRole, login, logout, updateUser }}>
       {children}
     </UserContext.Provider>
   );

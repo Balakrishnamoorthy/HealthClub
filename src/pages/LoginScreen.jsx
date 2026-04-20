@@ -4,6 +4,8 @@ import { Icon } from "../components/Icons";
 import { useToast } from "../components/UI";
 import { useUser } from "../context/UserContext";
 
+const API_BASE = import.meta.env.VITE_API_BASE;
+
 export function LoginScreen({ onBack }) {
   const [role, setRole] = useState("user");
   const [phone, setPhone] = useState("");
@@ -11,31 +13,53 @@ export function LoginScreen({ onBack }) {
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const { show, node: toastNode } = useToast();
   const { login } = useUser();
 
+  // Role-aware OTP flow:
+  // Step 1 — verify that the phone+role exists in DB
+  // Step 2 — only then send OTP
   const handleSendOTP = async () => {
     if (!phone) { show("Enter your phone number", "error"); return; }
-    setLoading(true);
+    setVerifying(true);
 
     try {
-      const res = await fetch("https://ka4hjb23ie.execute-api.ap-south-1.amazonaws.com/dev/send-otp", {
+      // Step 1: Check if user exists for this role
+      const verifyRes = await fetch(`${API_BASE}/verify-login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, role })
+      });
+      const verifyData = await verifyRes.json();
+
+      if (!verifyRes.ok || !verifyData.found) {
+        setVerifying(false);
+        const roleLabel = role === "user" ? "member" : "HSA";
+        const errMsg = verifyData.error ||
+          `No ${roleLabel} account found with this number. Please register first.`;
+        show(errMsg, "error");
+        return;
+      }
+
+      // Step 2: User exists — now send OTP
+      const otpRes = await fetch(`${API_BASE}/send-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone })
       });
-      const data = await res.json();
-      setLoading(false);
+      const otpData = await otpRes.json();
+      setVerifying(false);
 
-      if (res.ok) {
-        console.log("✅ OTP Received from Lambda:", data.otp);
+      if (otpRes.ok) {
+        console.log("✅ OTP Received from Lambda:", otpData.otp);
         setOtpSent(true);
         show("OTP sent! Check your browser console.", "info");
       } else {
-        show(data.error || "Failed to send OTP", "error");
+        show(otpData.error || "Failed to send OTP", "error");
       }
     } catch (err) {
-      setLoading(false);
+      setVerifying(false);
       show("Network connection error.", "error");
     }
   };
@@ -55,7 +79,7 @@ export function LoginScreen({ onBack }) {
     setLoading(true);
 
     try {
-      const res = await fetch("https://ka4hjb23ie.execute-api.ap-south-1.amazonaws.com/dev/login", {
+      const res = await fetch(`${API_BASE}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, role })
@@ -72,6 +96,12 @@ export function LoginScreen({ onBack }) {
       setLoading(false);
       show("Network connection error.", "error");
     }
+  };
+
+  const resetFlow = () => {
+    setOtpSent(false);
+    setOtp("");
+    setPhone("");
   };
 
   return (
@@ -91,7 +121,7 @@ export function LoginScreen({ onBack }) {
         <div className="card" style={{ padding: 36 }}>
           <div className="tab-list" style={{ marginBottom: 28 }}>
             {[["user", "Member"], ["hsa", "HSA"], ["admin", "Admin"]].map(([r, l]) => (
-              <button key={r} className={`tab ${role === r ? "active" : ""}`} onClick={() => { setRole(r); setOtpSent(false); setOtp(""); }}>{l}</button>
+              <button key={r} className={`tab ${role === r ? "active" : ""}`} onClick={() => { setRole(r); setOtpSent(false); setOtp(""); setPhone(""); }}>{l}</button>
             ))}
           </div>
 
@@ -99,19 +129,80 @@ export function LoginScreen({ onBack }) {
             <>
               <div className="field">
                 <label className="label">Phone Number</label>
-                <input className="input" placeholder="+91 98765 43210" value={phone} disabled={otpSent} onChange={e => setPhone(e.target.value)} />
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    className="input"
+                    placeholder="+91 98765 43210"
+                    value={phone}
+                    disabled={otpSent}
+                    onChange={e => setPhone(e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                  {otpSent && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={resetFlow}
+                      title="Change number"
+                      style={{ flexShrink: 0, padding: "8px 10px" }}
+                    >
+                      <Icon.Edit />
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {/* Role-aware hint */}
+              {!otpSent && (
+                <p style={{ fontSize: 12, color: COLORS.slate, marginBottom: 16, marginTop: -8 }}>
+                  {role === "user"
+                    ? "Enter the phone number you registered as a member."
+                    : "Enter your HSA assigned phone number."}
+                </p>
+              )}
 
               {otpSent && (
                 <div className="field">
-                  <label className="label">Received OTP</label>
-                  <input className="input" placeholder="••••••" maxLength={6} style={{ letterSpacing: "0.4em", fontSize: 22, textAlign: "center" }} value={otp} onChange={e => setOtp(e.target.value)} />
+                  <label className="label">Enter OTP</label>
+                  <input
+                    className="input"
+                    placeholder="••••••"
+                    maxLength={6}
+                    style={{ letterSpacing: "0.4em", fontSize: 22, textAlign: "center" }}
+                    value={otp}
+                    onChange={e => setOtp(e.target.value)}
+                    autoFocus
+                  />
+                  <p style={{ fontSize: 12, color: COLORS.slate, marginTop: 6 }}>
+                    OTP sent to {phone}. Check your browser console (demo mode).
+                  </p>
                 </div>
               )}
 
-              <button className="btn btn-primary w-full" style={{ justifyContent: "center" }} onClick={!otpSent ? handleSendOTP : handleLogin}>
-                {!otpSent ? "Send OTP →" : "Login"}
+              <button
+                className="btn btn-primary w-full"
+                style={{ justifyContent: "center" }}
+                onClick={!otpSent ? handleSendOTP : handleLogin}
+                disabled={verifying || loading}
+              >
+                {verifying ? (
+                  <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2, marginRight: 8 }} />Checking...</>
+                ) : loading ? (
+                  <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2, marginRight: 8 }} />Logging in...</>
+                ) : !otpSent ? (
+                  "Send OTP →"
+                ) : (
+                  "Login →"
+                )}
               </button>
+
+              {!otpSent && (
+                <p style={{ textAlign: "center", fontSize: 13, color: COLORS.slate, marginTop: 16 }}>
+                  Don't have an account?{" "}
+                  <a href="/onboarding" style={{ color: COLORS.emerald, fontWeight: 600, textDecoration: "none" }}>
+                    Register here
+                  </a>
+                </p>
+              )}
             </>
           )}
 
