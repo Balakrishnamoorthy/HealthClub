@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { COLORS, AREAS } from "../utils/constants";
 import { Icon } from "../components/Icons";
 import { useToast, Modal, Avatar, BarChart } from "../components/UI";
+import { Breadcrumb } from "../components/Breadcrumb";
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 
@@ -145,7 +146,10 @@ export function AdminDashboard({ onLogout }) {
         {section === "overview" && (
           <>
             <div className="page-header">
-              <h1 className="page-title">Admin Overview</h1>
+              <div>
+                <Breadcrumb section={section} navItems={navItems} onNavigate={setSection} dashboardLabel="Admin Panel" />
+                <h1 className="page-title">Admin Overview</h1>
+              </div>
               <span className="badge badge-danger"><Icon.Lock /> Secure Access</span>
             </div>
             <div className="page-body">
@@ -214,7 +218,10 @@ export function AdminDashboard({ onLogout }) {
         {section === "users" && (
           <>
             <div className="page-header">
-              <h1 className="page-title">All Users</h1>
+              <div>
+                <Breadcrumb section={section} navItems={navItems} onNavigate={setSection} dashboardLabel="Admin Panel" />
+                <h1 className="page-title">All Users</h1>
+              </div>
             </div>
             <div className="page-body">
               {loading ? <div style={{ textAlign: "center", padding: 40 }}><span className="spinner"></span></div> : (
@@ -258,7 +265,10 @@ export function AdminDashboard({ onLogout }) {
         {section === "hsas" && (
           <>
             <div className="page-header">
-              <h1 className="page-title">HSA Management</h1>
+              <div>
+                <Breadcrumb section={section} navItems={navItems} onNavigate={setSection} dashboardLabel="Admin Panel" />
+                <h1 className="page-title">HSA Management</h1>
+              </div>
               <button className="btn btn-primary btn-sm" onClick={() => setAddHSAModal(true)}><Icon.Plus /> Add HSA</button>
             </div>
             <div className="page-body">
@@ -296,7 +306,12 @@ export function AdminDashboard({ onLogout }) {
 
         {section === "analytics" && (
           <>
-            <div className="page-header"><h1 className="page-title">Analytics</h1></div>
+            <div className="page-header">
+              <div>
+                <Breadcrumb section={section} navItems={navItems} onNavigate={setSection} dashboardLabel="Admin Panel" />
+                <h1 className="page-title">Analytics</h1>
+              </div>
+            </div>
             <div className="page-body">
               <div className="grid-2" style={{ gap: 20, marginBottom: 24 }}>
                 <div className="card" style={{ padding: 24 }}>

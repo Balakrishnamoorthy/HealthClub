@@ -4,43 +4,9 @@ import { COLORS, AREAS, PLANS } from "../utils/constants";
 import { Icon } from "../components/Icons";
 import { useToast, Modal, Avatar, Gauge, MiniChart, BarChart, QRCode } from "../components/UI";
 import { useUser } from "../context/UserContext";
+import { Breadcrumb } from "../components/Breadcrumb";
 
 const API_BASE = import.meta.env.VITE_API_BASE;
-
-// ── Breadcrumb Component ─────────────────────────────────────────────────────
-function Breadcrumb({ section, navItems, onNavigate }) {
-  const nav = useNavigate();
-  const currentLabel = navItems.find(n => n.id === section)?.label || "Overview";
-  return (
-    <nav aria-label="breadcrumb" style={{
-      display: "flex", alignItems: "center", gap: 6,
-      fontSize: 13, color: COLORS.slate,
-      padding: "10px 0 18px",
-      flexWrap: "wrap"
-    }}>
-      <span
-        onClick={() => nav("/")}
-        style={{ cursor: "pointer", color: COLORS.emerald, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}
-      >
-        <span style={{ width: 14, height: 14, display: "inline-flex" }}><Icon.Home /></span>
-        Home
-      </span>
-      <span style={{ opacity: 0.4 }}>/</span>
-      <span
-        onClick={() => onNavigate("overview")}
-        style={{ cursor: "pointer", color: section === "overview" ? COLORS.navy : COLORS.slate, fontWeight: section === "overview" ? 700 : 400 }}
-      >
-        Dashboard
-      </span>
-      {section !== "overview" && (
-        <>
-          <span style={{ opacity: 0.4 }}>/</span>
-          <span style={{ color: COLORS.navy, fontWeight: 700 }}>{currentLabel}</span>
-        </>
-      )}
-    </nav>
-  );
-}
 
 // ── Star Rating subcomponent ─────────────────────────────────────────────────
 function StarRating({ value, onChange }) {
@@ -648,13 +614,48 @@ export function UserDashboard({ user, onLogout }) {
                         {latestReport.status === 'attention' ? 'Needs Attention' : 'All Normal'}
                       </span>
                     </div>
+                    {/* Always render 4 gauges. Locked ones (not in plan) show blur + upgrade overlay */}
                     <div className="gauge-grid">
-                      <Gauge value={latestReport.glucose} max={200} label="Glucose" color={COLORS.glucose} />
-                      <Gauge value={latestReport.systolic} max={200} label="Systolic" color={COLORS.pressure} />
-                      <Gauge value={latestReport.diastolic} max={120} label="Diastolic" color="#A855F7" />
-                      {plan.metrics?.includes("cholesterol") && (
-                        <Gauge value={latestReport.cholesterol} max={300} label="Cholesterol" color={COLORS.cholesterol} />
-                      )}
+                      {[
+                        { key: "blood_glucose",   value: latestReport.glucose,     max: 200, label: "Glucose",     color: COLORS.glucose },
+                        { key: "blood_pressure",  value: latestReport.systolic,    max: 200, label: "Systolic",    color: COLORS.pressure },
+                        { key: "blood_pressure",  value: latestReport.diastolic,   max: 120, label: "Diastolic",   color: "#A855F7" },
+                        { key: "cholesterol",     value: latestReport.cholesterol, max: 300, label: "Cholesterol", color: COLORS.cholesterol },
+                      ].map(({ key, value, max, label, color }, idx) => {
+                        // Diastolic shares blood_pressure key — treat it same as systolic for plan check
+                        const unlocked = plan.metrics?.includes(key);
+                        return (
+                          <div key={idx} style={{ position: "relative", display: "inline-flex" }}>
+                            {/* The gauge is always rendered so layout stays 4-wide */}
+                            <div style={{ filter: unlocked ? "none" : "blur(5px) brightness(0.55)", transition: "filter 0.3s", pointerEvents: "none" }}>
+                              <Gauge value={unlocked ? value : Math.round(max * 0.55)} max={max} label={label} color={color} />
+                            </div>
+                            {/* Lock overlay for metrics not in plan */}
+                            {!unlocked && (
+                              <div
+                                onClick={() => setUpgradePlanModal(true)}
+                                title="Upgrade your plan to unlock this metric"
+                                style={{
+                                  position: "absolute", inset: 0,
+                                  display: "flex", flexDirection: "column",
+                                  alignItems: "center", justifyContent: "center",
+                                  cursor: "pointer", gap: 4, zIndex: 2,
+                                  borderRadius: 12,
+                                  background: "rgba(10,22,40,0.22)",
+                                  backdropFilter: "blur(1px)",
+                                }}
+                              >
+                                <span style={{ fontSize: 18 }}>🔒</span>
+                                <span style={{
+                                  fontSize: 9, fontWeight: 800, color: COLORS.emerald,
+                                  textTransform: "uppercase", letterSpacing: "0.06em",
+                                  textAlign: "center", lineHeight: 1.3, padding: "0 4px"
+                                }}>Unlock</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                   {/* Trend cards */}

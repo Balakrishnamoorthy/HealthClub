@@ -3,6 +3,7 @@ import { COLORS } from "../utils/constants";
 import { Icon } from "../components/Icons";
 import { useToast, Modal, Avatar } from "../components/UI";
 import UserDetailModal from "../components/UserDetailModal.jsx";
+import { Breadcrumb } from "../components/Breadcrumb";
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 
@@ -145,6 +146,7 @@ export function HSADashboard({ hsa, onLogout }) {
           <>
             <div className="page-header">
               <div>
+                <Breadcrumb section={section} navItems={navItems} onNavigate={setSection} dashboardLabel="HSA Portal" />
                 <p style={{ fontSize: 13, color: COLORS.slate }}>Health Service Assistant</p>
                 <h1 className="page-title">Today's Schedule</h1>
               </div>
@@ -206,7 +208,10 @@ export function HSADashboard({ hsa, onLogout }) {
         {section === "users" && (
           <>
             <div className="page-header">
-              <h1 className="page-title">My Users — {myArea}</h1>
+              <div>
+                <Breadcrumb section={section} navItems={navItems} onNavigate={setSection} dashboardLabel="HSA Portal" />
+                <h1 className="page-title">My Users — {myArea}</h1>
+              </div>
             </div>
             <div className="page-body">
               <div style={{ position: "relative", marginBottom: 20 }}>
@@ -245,7 +250,12 @@ export function HSADashboard({ hsa, onLogout }) {
 
         {section === "notifications" && (
           <>
-            <div className="page-header"><h1 className="page-title">Notifications</h1></div>
+            <div className="page-header">
+              <div>
+                <Breadcrumb section={section} navItems={navItems} onNavigate={setSection} dashboardLabel="HSA Portal" />
+                <h1 className="page-title">Notifications</h1>
+              </div>
+            </div>
             <div className="page-body">
               <div className="card" style={{ padding: 8 }}>
                 <p style={{ padding: 20, color: COLORS.slate }}>You have no new notifications.</p>
